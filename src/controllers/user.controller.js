@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import User from '../models/user.model.js';
 import uploadToCloudinary from '../utils/uploadToCloudinary.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { ApiError } from '../utils/apiError.js';
 /**
  * @desc    Update user avatar
  * @route   PUT /api/v1/users/avatar

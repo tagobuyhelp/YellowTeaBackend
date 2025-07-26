@@ -4,6 +4,7 @@ import User from '../models/user.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import mongoose from 'mongoose';
+import { sendUserNotification } from '../utils/responseHandler.js';
 
 /**
  * @desc    Create new order
@@ -41,32 +42,29 @@ export const createOrder = async (req, res, next) => {
         
         // Process order items - handle both productId and direct item data
         const itemsPromises = orderItems.map(async (item) => {
-            // If productId is provided, fetch product details
-            if (item.productId) {
-                const product = await Product.findById(item.productId);
-                
+            // If productId or product is provided, fetch product details
+            const productId = item.productId || item.product;
+            if (productId) {
+                const product = await Product.findById(productId);
                 if (!product) {
-                    throw new ApiError(404, `Product not found: ${item.productId}`);
+                    throw new ApiError(404, `Product not found: ${productId}`);
                 }
-                
                 return {
                     name: product.name,
                     quantity: item.quantity,
-                    image: product.images[0] || 'default-product-image.jpg',
+                    image: product.images?.[0] || 'default-product-image.jpg',
                     price: product.price,
                     product: product._id
                 };
             } else {
                 // Use provided item data directly (when productId is null)
-                // Create a temporary product ID for items without product reference
                 const tempProductId = new mongoose.Types.ObjectId();
-                
                 return {
                     name: item.name,
                     quantity: item.quantity,
                     image: item.image || 'default-product-image.jpg',
                     price: item.price,
-                    product: tempProductId // Required field, use temp ID
+                    product: tempProductId
                 };
             }
         });
@@ -136,7 +134,8 @@ export const createOrder = async (req, res, next) => {
                 'debit_card': 'debit_card',
                 'upi': 'upi',
                 'cod': 'cod',
-                'wallet': 'wallet'
+                'wallet': 'wallet',
+                'razorpay': 'razorpay'
             };
             return paymentMap[method] || 'credit_card';
         };
@@ -145,11 +144,11 @@ export const createOrder = async (req, res, next) => {
         const mapAddress = (address) => {
             if (!address) return null;
             return {
-                street: address.street || address.line1 || '',
+                address: address.address || address.street || address.line1 || '',
                 city: address.city || '',
-                state: address.state || '',
-                postal_code: address.postalCode || address.pincode || '',
-                country: address.country || 'India'
+                postalCode: address.postalCode || address.pincode || '',
+                country: address.country || 'India',
+                phone: address.phone || ''
             };
         };
         
@@ -166,7 +165,7 @@ export const createOrder = async (req, res, next) => {
             totalPrice,
             orderNumber,
             couponCode: couponCode || null,
-            orderStatus: 'pending', // Use orderStatus instead of status
+            status: 'pending', // Use status instead of orderStatus
             notes: specialInstructions || null
         });
         
@@ -176,15 +175,10 @@ export const createOrder = async (req, res, next) => {
         });
         
         // Add notification for user
-        await User.findByIdAndUpdate(req.user.id, {
-            $push: {
-                notifications: {
-                    type: 'order_placed',
-                    message: `Your order ${orderNumber} has been placed successfully.`,
-                    order: order._id
-                }
-            }
-        });
+        await sendUserNotification(req.user.id, {
+            type: 'order_placed',
+            order: order._id
+        }, { orderNumber, orderId: order._id });
         
         res.status(201).json(
             new ApiResponse(201, order, 'Order placed successfully')
@@ -336,15 +330,10 @@ export const updateOrderStatus = async (req, res, next) => {
         await order.save();
         
         // Add notification for user
-        await User.findByIdAndUpdate(order.user, {
-            $push: {
-                notifications: {
-                    type: `order_${status}`,
-                    message: `Your order ${order.orderNumber} has been ${status}.`,
-                    order: order._id
-                }
-            }
-        });
+        await sendUserNotification(order.user, {
+            type: `order_${status}`,
+            order: order._id
+        }, { orderNumber: order.orderNumber });
         
         res.status(200).json(
             new ApiResponse(200, order, `Order status updated to ${status}`)
@@ -398,15 +387,10 @@ export const updateOrderToPaid = async (req, res, next) => {
         const updatedOrder = await order.save();
         
         // Add notification for user
-        await User.findByIdAndUpdate(req.user.id, {
-            $push: {
-                notifications: {
-                    type: 'payment_successful',
-                    message: `Payment for order ${order.orderNumber} was successful.`,
-                    order: order._id
-                }
-            }
-        });
+        await sendUserNotification(req.user.id, {
+            type: 'payment_successful',
+            order: order._id
+        }, { orderNumber: order.orderNumber, method: order.paymentMethod });
         
         res.status(200).json(
             new ApiResponse(200, updatedOrder, 'Order payment updated successfully')
@@ -553,15 +537,10 @@ export const getOrderStats = async (req, res, next) => {
                 await order.save();
                 
                 // Add notification for user
-                await User.findByIdAndUpdate(order.user, {
-                    $push: {
-                        notifications: {
-                            type: 'order_cancelled',
-                            message: `Your order ${order.orderNumber} has been cancelled.`,
-                            order: order._id
-                        }
-                    }
-                });
+                await sendUserNotification(order.user, {
+                    type: 'order_cancelled',
+                    order: order._id
+                }, { orderNumber: order.orderNumber });
                 
                 // Add notification for admin
                 const adminUsers = await User.find({ role: 'admin' });
@@ -668,10 +647,7 @@ export const getOrderStats = async (req, res, next) => {
                     return next(new ApiError(403, 'Not authorized to access this order'));
                 }
                 
-                // Check if order is paid
-                if (!order.isPaid) {
-                    return next(new ApiError(400, 'Cannot generate invoice for unpaid order'));
-                }
+                
                 
                 // Generate invoice data
                 const invoiceData = {
@@ -874,14 +850,14 @@ export const getOrderAnalytics = async (req, res, next) => {
             {
                 $match: {
                     created_at: { $gte: startDate, $lte: endDate },
-                    "shippingAddress.state": { $exists: true }
+                    "shippingAddress.address": { $exists: true }
                 }
             },
             { $unwind: "$orderItems" },
             {
                 $group: {
                     _id: {
-                        region: "$shippingAddress.state",
+                        region: "$shippingAddress.city",
                         product: "$orderItems.product"
                     },
                     productName: { $first: "$orderItems.name" },
@@ -989,7 +965,7 @@ export const exportOrders = async (req, res, next) => {
             'Tax': order.taxPrice,
             'Discount': order.discountAmount,
             'Total Price': order.totalPrice,
-            'Shipping Address': `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.state}, ${order.shippingAddress.postal_code}, ${order.shippingAddress.country}`
+            'Shipping Address': `${order.shippingAddress.address}, ${order.shippingAddress.city}, ${order.shippingAddress.postalCode}, ${order.shippingAddress.country}`
         }));
         
         // In a real implementation, you would generate a CSV file
@@ -1037,15 +1013,10 @@ export const updateShippingDetails = async (req, res, next) => {
         await order.save();
         
         // Add notification for user
-        await User.findByIdAndUpdate(order.user, {
-            $push: {
-                notifications: {
-                    type: 'order_shipped',
-                    message: `Your order ${order.orderNumber} has been shipped. Track it with ${courier} using tracking number ${trackingNumber}.`,
-                    order: order._id
-                }
-            }
-        });
+        await sendUserNotification(order.user, {
+            type: 'order_shipped',
+            order: order._id
+        }, { orderNumber: order.orderNumber, courier: order.courier, trackingNumber: order.trackingNumber });
         
         res.status(200).json(
             new ApiResponse(200, order, 'Shipping details updated successfully')
@@ -1088,6 +1059,44 @@ export const getOrderCountByStatus = async (req, res, next) => {
         res.status(200).json(
             new ApiResponse(200, result, 'Order counts by status retrieved successfully')
         );
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Mark COD order as paid (admin/staff)
+ * @route   PUT /api/v1/orders/:id/cod-paid
+ * @access  Private/Admin
+ */
+export const markCodOrderAsPaid = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const order = await Order.findById(id);
+        if (!order) {
+            return next(new ApiError(404, 'Order not found'));
+        }
+        if (order.paymentMethod !== 'cod') {
+            return next(new ApiError(400, 'Order is not a COD order'));
+        }
+        if (order.isPaid) {
+            return next(new ApiError(400, 'Order is already marked as paid'));
+        }
+        order.isPaid = true;
+        order.paidAt = Date.now();
+        order.paymentResult = {
+            id: 'COD',
+            status: 'paid',
+            update_time: Date.now(),
+            email_address: order.user?.email || '',
+            method: 'cod'
+        };
+        await order.save();
+        await sendUserNotification(order.user, {
+            type: 'payment_successful',
+            order: order._id
+        }, { orderNumber: order.orderNumber, method: 'cod' });
+        res.status(200).json(new ApiResponse(200, order, 'COD order marked as paid'));
     } catch (error) {
         next(error);
     }

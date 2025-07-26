@@ -9,10 +9,11 @@ import {
     getOrderAnalytics,
     exportOrders,
     updateShippingDetails,
-    getOrderCountByStatus
+    getOrderCountByStatus,
+    markCodOrderAsPaid,
+    getAllOrders
 } from '../controllers/order.controller.js';
-import { isAuthenticated } from '../middlewares/auth.middleware.js';
-import { restrictTo } from '../middlewares/role.middleware.js';
+import { isAuthenticated, protect, restrictTo } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
@@ -51,5 +52,11 @@ router.route('/:id/track')
 
 router.route('/:id/shipping')
     .put(isAuthenticated, restrictTo('admin'), updateShippingDetails);
+
+// Mark COD order as paid (admin only)
+router.put('/:id/cod-paid', protect, restrictTo('admin'), markCodOrderAsPaid);
+
+// Admin: Get all orders
+router.get('/admin/all', isAuthenticated, restrictTo('admin'), getAllOrders);
 
 export default router;

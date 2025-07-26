@@ -33,22 +33,24 @@ const orderSchema = new mongoose.Schema({
     },
     orderItems: [orderItemSchema],
     shippingAddress: {
-        street: { type: String, required: true },
+        address: { type: String, required: true },
         city: { type: String, required: true },
-        state: { type: String, required: true },
-        postal_code: { type: String, required: true },
-        country: { type: String, required: true }
+        postalCode: { type: String, required: true },
+        country: { type: String, required: true },
+        phone: { type: String, required: true }
     },
     paymentMethod: {
         type: String,
         required: true,
-        enum: ['credit_card', 'debit_card', 'upi', 'cod', 'wallet']
+        enum: ['credit_card', 'debit_card', 'upi', 'cod', 'wallet', 'razorpay']
     },
     paymentResult: {
         id: { type: String },
         status: { type: String },
         update_time: { type: String },
-        email_address: { type: String }
+        email_address: { type: String },
+        razorpay_order_id: { type: String },
+        razorpay_payment_id: { type: String }
     },
     itemsPrice: {
         type: Number,
@@ -90,7 +92,7 @@ const orderSchema = new mongoose.Schema({
     deliveredAt: {
         type: Date
     },
-    orderStatus: {
+    status: {
         type: String,
         required: true,
         enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
@@ -104,11 +106,28 @@ const orderSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    razorpayOrderId: {
+        type: String
+    },
     couponCode: {
         type: String
     },
     notes: {
         type: String
+    },
+    refundStatus: {
+        type: String,
+        enum: ['pending', 'processing', 'completed', 'failed'],
+        required: false
+    },
+    refundDetails: {
+        amount: { type: Number },
+        id: { type: String },
+        status: { type: String },
+        processedAt: { type: Date },
+        processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reason: { type: String },
+        razorpayRefundId: { type: String }
     }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 

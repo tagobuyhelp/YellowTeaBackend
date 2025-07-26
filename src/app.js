@@ -26,7 +26,7 @@ app.use(helmet());
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
         ? ['https://yellowtea.com', 'https://admin.yellowtea.com', 'https://preview--yellow-tea-site.lovable.app']
-        : ['http://localhost:4000', 'http://localhost:3000', 'http://localhost:5173'],
+        : ['http://localhost:3000', 'http://localhost:8081', 'http://localhost:5173', 'https://preview--yellow-tea-site.lovable.app'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     optionsSuccessStatus: 204,
@@ -94,6 +94,8 @@ import authRoutes from './routes/auth.routes.js';
 import productRoutes from './routes/product.routes.js';
 import userRoutes from './routes/user.routes.js';
 import orderRoutes from './routes/order.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
+import webhookRoutes from './routes/webhook.routes.js';
 import qrVideoRoutes from './routes/qrVideo.routes.js';
 import adminLogRoutes from './routes/adminLog.routes.js';
 import impactMetricRoutes from './routes/impactMetric.routes.js';
@@ -105,6 +107,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/qr-videos', qrVideoRoutes);
 app.use('/api/v1/admin/logs', adminLogRoutes);
 app.use('/api/v1/impact-metrics', impactMetricRoutes);
