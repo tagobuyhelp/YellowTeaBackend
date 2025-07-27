@@ -45,7 +45,7 @@ const upload = multer({
 export const uploadSinglePhoto = upload.single('photo');
 
 // Middleware to handle multiple file uploads under the field name 'photos'
-export const uploadMultiplePhotos = upload.array('photos', 5); // Allow up to 5 photos
+export const uploadMultiplePhotos = upload.array('images', 10); // Allow up to 10 images for products
 
 // Middleware to handle multiple fields with different file types
 export const uploadMixedFiles = upload.fields([

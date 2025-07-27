@@ -121,7 +121,15 @@ productSchema.pre('save', function (next) {
 
 // Virtual for formatted price
 productSchema.virtual('formattedPrice').get(function () {
-    return `₹${this.price.toFixed(2)}`;
+    if (typeof this.price === 'number') {
+        return `₹${this.price.toFixed(2)}`;
+    }
+    return '₹0.00';
+});
+
+// Virtual for id field (maps _id to id for frontend compatibility)
+productSchema.virtual('id').get(function () {
+    return this._id ? this._id.toString() : null;
 });
 
 // Static method to get product stats
