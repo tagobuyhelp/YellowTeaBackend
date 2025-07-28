@@ -23,16 +23,25 @@ const app = express();
 app.use(helmet());
 
 // CORS configuration with more options
+const allowedOrigins = process.env.NODE_ENV === 'production'
+    ? ['https://yellowtea.com', 'https://admin.yellowtea.com', 'https://preview--yellow-tea-site.lovable.app', 'https://yellowtea.tagobuy.site']
+    : ['http://localhost:4000', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:5173', 'https://yellowtea.tagobuy.site', 'https://preview--yellow-tea-site.lovable.app'];
+
 const corsOptions = {
-    origin: process.env.NODE_ENV === 'production'
-        ? ['https://yellowtea.com', 'https://admin.yellowtea.com', 'https://preview--yellow-tea-site.lovable.app', 'https://yellowtea.tagobuy.site']
-        : ['http://localhost:4000', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:5173', 'https://yellowtea.tagobuy.site/', 'https://preview--yellow-tea-site.lovable.app'],
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     optionsSuccessStatus: 204,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
 };
+
 app.use(cors(corsOptions));
 
 // Rate limiting
