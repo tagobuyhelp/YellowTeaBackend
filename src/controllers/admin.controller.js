@@ -16,29 +16,29 @@ export const getAdminDashboard = async (req, res, next) => {
         const totalUsers = await User.countDocuments();
         const totalOrders = await Order.countDocuments();
         const totalProducts = await Product.countDocuments();
-        
+
         // Get revenue data
         const revenueResult = await Order.aggregate([
             { $match: { isPaid: true } },
             { $group: { _id: null, totalRevenue: { $sum: '$totalPrice' } } }
         ]);
         const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
-        
+
         // Get recent activity
         const recentOrders = await Order.find()
             .sort({ created_at: -1 })
             .limit(5)
             .populate('user', 'name email');
-        
+
         const recentUsers = await User.find()
             .sort({ created_at: -1 })
             .limit(5)
             .select('name email created_at');
-        
+
         // Get monthly stats for the last 6 months
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        
+
         const monthlyStats = await Order.aggregate([
             { $match: { created_at: { $gte: sixMonthsAgo } } },
             {
@@ -53,7 +53,7 @@ export const getAdminDashboard = async (req, res, next) => {
             },
             { $sort: { '_id.year': 1, '_id.month': 1 } }
         ]);
-        
+
         // Get top selling products
         const topProducts = await Order.aggregate([
             { $unwind: '$orderItems' },
@@ -68,12 +68,12 @@ export const getAdminDashboard = async (req, res, next) => {
             { $sort: { totalSold: -1 } },
             { $limit: 5 }
         ]);
-        
+
         // Get order status distribution
         const orderStatusDistribution = await Order.aggregate([
             { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
-        
+
         res.status(200).json(new ApiResponse(200, {
             overview: {
                 totalUsers,
@@ -102,14 +102,14 @@ export const getAllCustomers = async (req, res, next) => {
         const page = parseInt(req.query.page, 10) || 1;
         const limit = parseInt(req.query.limit, 10) || 10;
         const skip = (page - 1) * limit;
-        
+
         // Build query
         const queryObj = { ...req.query };
         const excludedFields = ['page', 'sort', 'limit', 'fields', 'search'];
         excludedFields.forEach(field => delete queryObj[field]);
-        
+
         let query = User.find(queryObj);
-        
+
         // Search functionality
         if (req.query.search) {
             query = query.find({
@@ -119,7 +119,7 @@ export const getAllCustomers = async (req, res, next) => {
                 ]
             });
         }
-        
+
         // Sorting
         if (req.query.sort) {
             const sortBy = req.query.sort.split(',').join(' ');
@@ -127,10 +127,10 @@ export const getAllCustomers = async (req, res, next) => {
         } else {
             query = query.sort('-created_at');
         }
-        
+
         const users = await query.skip(skip).limit(limit).select('-password -refresh_token');
         const total = await User.countDocuments();
-        
+
         res.status(200).json(new ApiResponse(200, {
             users,
             pagination: {
@@ -149,12 +149,12 @@ export const getCustomerById = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.id).select('-password -refresh_token');
         if (!user) return next(new ApiError(404, 'User not found'));
-        
+
         // Get user's order history
         const userOrders = await Order.find({ user: req.params.id })
             .sort({ created_at: -1 })
             .limit(10);
-        
+
         // Get user stats
         const orderStats = await Order.aggregate([
             { $match: { user: user._id } },
@@ -167,7 +167,7 @@ export const getCustomerById = async (req, res, next) => {
                 }
             }
         ]);
-        
+
         res.status(200).json(new ApiResponse(200, {
             user,
             orders: userOrders,
@@ -182,16 +182,16 @@ export const updateCustomer = async (req, res, next) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
-        
+
         // Remove sensitive fields from update
         delete updateData.password;
         delete updateData.refresh_token;
-        
+
         const user = await User.findByIdAndUpdate(id, updateData, { new: true })
             .select('-password -refresh_token');
-        
+
         if (!user) return next(new ApiError(404, 'User not found'));
-        
+
         res.status(200).json(new ApiResponse(200, user, 'Customer updated successfully'));
     } catch (error) {
         next(error);
@@ -201,17 +201,17 @@ export const updateCustomer = async (req, res, next) => {
 export const deleteCustomer = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         if (id === req.user.id) {
             return next(new ApiError(400, 'You cannot delete your own account'));
         }
-        
+
         const user = await User.findByIdAndDelete(id);
         if (!user) return next(new ApiError(404, 'User not found'));
-        
+
         // Delete associated orders (optional - you might want to keep them for records)
         // await Order.deleteMany({ user: id });
-        
+
         res.status(200).json(new ApiResponse(200, null, 'Customer deleted successfully'));
     } catch (error) {
         next(error);
@@ -224,29 +224,29 @@ export const getAllOrders = async (req, res, next) => {
         const page = parseInt(req.query.page, 10) || 1;
         const limit = parseInt(req.query.limit, 10) || 10;
         const skip = (page - 1) * limit;
-        
+
         const queryObj = { ...req.query };
         const excludedFields = ['page', 'sort', 'limit', 'fields'];
         excludedFields.forEach(field => delete queryObj[field]);
-        
+
         let queryStr = JSON.stringify(queryObj);
         queryStr = queryStr.replace(/\b(gt|gte|lt|lte)\b/g, match => `$${match}`);
-        
+
         let query = Order.find(JSON.parse(queryStr));
-        
+
         if (req.query.sort) {
             const sortBy = req.query.sort.split(',').join(' ');
             query = query.sort(sortBy);
         } else {
             query = query.sort('-created_at');
         }
-        
+
         const orders = await query.skip(skip).limit(limit)
             .populate('user', 'name email')
             .populate('orderItems.product', 'name images');
-        
+
         const totalOrders = await Order.countDocuments(JSON.parse(queryStr));
-        
+
         res.status(200).json(new ApiResponse(200, {
             orders,
             pagination: {
@@ -266,9 +266,9 @@ export const getOrderById = async (req, res, next) => {
         const order = await Order.findById(req.params.id)
             .populate('user', 'name email phone')
             .populate('orderItems.product', 'name images slug');
-        
+
         if (!order) return next(new ApiError(404, 'Order not found'));
-        
+
         res.status(200).json(new ApiResponse(200, order, 'Order details retrieved successfully'));
     } catch (error) {
         next(error);
@@ -279,23 +279,23 @@ export const updateOrderStatus = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { status, notes } = req.body;
-        
+
         if (!status) {
             return next(new ApiError(400, 'Please provide order status'));
         }
-        
+
         const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
         if (!validStatuses.includes(status)) {
             return next(new ApiError(400, 'Invalid order status'));
         }
-        
+
         const order = await Order.findById(id);
         if (!order) return next(new ApiError(404, 'Order not found'));
-        
+
         // Update order status
         order.status = status;
         if (notes) order.adminNotes = notes;
-        
+
         // Set timestamps based on status
         if (status === 'delivered') {
             order.deliveredAt = Date.now();
@@ -304,15 +304,15 @@ export const updateOrderStatus = async (req, res, next) => {
         } else if (status === 'cancelled') {
             order.cancelledAt = Date.now();
         }
-        
+
         await order.save();
-        
+
         // Send notification to user
         await sendUserNotification(order.user, {
             type: `order_${status}`,
             order: order._id
         }, { orderNumber: order.orderNumber });
-        
+
         res.status(200).json(new ApiResponse(200, order, `Order status updated to ${status}`));
     } catch (error) {
         next(error);
@@ -327,26 +327,26 @@ export const getOrderStats = async (req, res, next) => {
             { $group: { _id: null, totalSales: { $sum: '$totalPrice' } } }
         ]);
         const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
-        
+
         const ordersByStatus = await Order.aggregate([
             { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
-        
+
         const monthlyOrders = await Order.aggregate([
             { $match: { isPaid: true, paidAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } } },
             { $group: { _id: { month: { $month: '$paidAt' }, year: { $year: '$paidAt' } }, count: { $sum: 1 }, total: { $sum: '$totalPrice' } } },
             { $sort: { '_id.year': 1, '_id.month': 1 } }
         ]);
-        
+
         const topProducts = await Order.aggregate([
             { $unwind: '$orderItems' },
             { $group: { _id: '$orderItems.product', name: { $first: '$orderItems.name' }, totalSold: { $sum: '$orderItems.quantity' }, totalRevenue: { $sum: { $multiply: ['$orderItems.price', '$orderItems.quantity'] } } } },
             { $sort: { totalSold: -1 } },
             { $limit: 5 }
         ]);
-        
+
         const recentOrders = await Order.find().sort({ created_at: -1 }).limit(5).populate('user', 'name email');
-        
+
         res.status(200).json(new ApiResponse(200, {
             totalOrders,
             totalSales,
@@ -366,38 +366,38 @@ export const getAllProducts = async (req, res, next) => {
         const queryObj = { ...req.query };
         const excludedFields = ['page', 'sort', 'limit', 'fields', 'search'];
         excludedFields.forEach(field => delete queryObj[field]);
-        
+
         let queryStr = JSON.stringify(queryObj);
         queryStr = queryStr.replace(/\b(gt|gte|lt|lte)\b/g, match => `${match}`);
-        
+
         let query = Product.find(JSON.parse(queryStr));
-        
+
         if (req.query.search) {
             query = query.find({ $text: { $search: req.query.search } });
         }
-        
+
         if (req.query.sort) {
             const sortBy = req.query.sort.split(',').join(' ');
             query = query.sort(sortBy);
         } else {
             query = query.sort('-created_at');
         }
-        
+
         if (req.query.fields) {
             const fields = req.query.fields.split(',').join(' ');
             query = query.select(fields);
         } else {
             query = query.select('-__v');
         }
-        
+
         const page = parseInt(req.query.page, 10) || 1;
         const limit = parseInt(req.query.limit, 10) || 10;
         const skip = (page - 1) * limit;
-        
+
         query = query.skip(skip).limit(limit);
         const products = await query;
         const totalProducts = await Product.countDocuments(JSON.parse(queryStr));
-        
+
         // Ensure all products have _id and id fields
         const productsWithIds = products.map(product => {
             const productObj = product.toObject ? product.toObject() : product;
@@ -407,7 +407,7 @@ export const getAllProducts = async (req, res, next) => {
                 id: productObj._id || product._id || productObj.id || product.id
             };
         });
-        
+
         res.status(200).json(new ApiResponse(200, {
             products: productsWithIds,
             pagination: {
@@ -426,7 +426,7 @@ export const getProductById = async (req, res, next) => {
     try {
         const product = await Product.findById(req.params.id);
         if (!product) return next(new ApiError(404, 'Product not found'));
-        
+
         res.status(200).json(new ApiResponse(200, product, 'Product details retrieved successfully'));
     } catch (error) {
         next(error);
@@ -436,27 +436,27 @@ export const getProductById = async (req, res, next) => {
 export const createProduct = async (req, res, next) => {
     try {
         const { name } = req.body;
-        
+
         const existingProduct = await Product.findOne({ name });
         if (existingProduct) {
             return next(new ApiError(400, 'Product with this name already exists'));
         }
-        
+
         req.body.slug = slugify(name, { lower: true });
-        
+
         if (req.files && req.files.length > 0) {
             console.log('Files received for create:', req.files.length);
             console.log('File details for create:', req.files.map(f => ({ originalname: f.originalname, path: f.path })));
-            
+
             const imagePromises = req.files.map(file => uploadToCloudinary(file, 'products'));
             const uploadedImages = await Promise.all(imagePromises);
             req.body.images = uploadedImages.map(img => img.url);
-            
+
             console.log('Created product images:', req.body.images);
         }
-        
+
         const product = await Product.create(req.body);
-        
+
         res.status(201).json(new ApiResponse(201, product, 'Product created successfully'));
     } catch (error) {
         next(error);
@@ -489,12 +489,12 @@ export const updateProduct = async (req, res, next) => {
         // Comprehensive data sanitization
         const sanitizeData = (obj) => {
             if (!obj || typeof obj !== 'object') return obj;
-            
+
             // If it's an array, preserve it as an array
             if (Array.isArray(obj)) {
                 return obj.map(item => sanitizeData(item));
             }
-            
+
             const sanitized = {};
             for (const [key, value] of Object.entries(obj)) {
                 if (value === "" || value === '""' || value === '""""') {
@@ -515,17 +515,17 @@ export const updateProduct = async (req, res, next) => {
             return sanitized;
         };
 
-                // Handle array fields specifically
+        // Handle array fields specifically
         const sanitizeArrays = (data) => {
             const arrayFields = ['type', 'badges', 'taste_notes', 'tags', 'images'];
             const sanitized = { ...data };
-            
+
             for (const field of arrayFields) {
                 if (sanitized[field]) {
                     // If it's a string that looks like an array, try to parse it
                     if (typeof sanitized[field] === 'string') {
                         console.log(`Processing array field ${field}:`, sanitized[field]);
-                        
+
                         try {
                             // First, try to parse as JSON
                             const parsed = JSON.parse(sanitized[field]);
@@ -537,7 +537,7 @@ export const updateProduct = async (req, res, next) => {
                         } catch (error) {
                             console.log(`JSON parse failed for ${field}:`, error.message);
                         }
-                        
+
                         // Try to extract from malformed string format
                         try {
                             // Handle the specific format: "[ { '0': 'Black', '1': 'Masala' } ]"
@@ -556,7 +556,7 @@ export const updateProduct = async (req, res, next) => {
                         } catch (e) {
                             console.log(`Regex extraction failed for ${field}:`, e.message);
                         }
-                        
+
                         // Try alternative regex pattern
                         try {
                             const objectMatch = sanitized[field].match(/\{([^}]+)\}/);
@@ -582,7 +582,7 @@ export const updateProduct = async (req, res, next) => {
                         } catch (e) {
                             console.log(`Alternative extraction failed for ${field}:`, e.message);
                         }
-                        
+
                         // If all parsing fails, set to undefined
                         console.log(`All parsing methods failed for ${field}, setting to undefined`);
                         sanitized[field] = undefined;
@@ -610,25 +610,25 @@ export const updateProduct = async (req, res, next) => {
                             }).filter(item => item !== null); // Remove null items
                         } else {
                             // For other array fields, ensure they contain only strings
-                            sanitized[field] = sanitized[field].map(item => 
+                            sanitized[field] = sanitized[field].map(item =>
                                 typeof item === 'string' ? item : String(item)
                             );
                         }
                     }
                 }
             }
-            
+
             return sanitized;
         };
 
         // Sanitize the entire update data
         const sanitizedData = sanitizeData(updateData);
         console.log('After sanitizeData:', JSON.stringify(sanitizedData, null, 2));
-        
+
         // Handle array fields specifically
         const finalSanitizedData = sanitizeArrays(sanitizedData);
         console.log('After sanitizeArrays:', JSON.stringify(finalSanitizedData, null, 2));
-        
+
         // Handle specific date fields
         if (finalSanitizedData.origin && finalSanitizedData.origin.harvest_date) {
             if (finalSanitizedData.origin.harvest_date === "" || finalSanitizedData.origin.harvest_date === '""') {
@@ -715,20 +715,20 @@ export const updateProduct = async (req, res, next) => {
 
         if (req.files && req.files.length > 0) {
             console.log('Files received:', req.files.length);
-            console.log('File details:', req.files.map(f => ({ 
-                originalname: f.originalname, 
+            console.log('File details:', req.files.map(f => ({
+                originalname: f.originalname,
                 path: f.path,
                 mimetype: f.mimetype,
                 size: f.size,
                 fieldname: f.fieldname
             })));
-            
+
             const imagePromises = req.files.map(file => uploadToCloudinary(file, 'products'));
             const uploadedImages = await Promise.all(imagePromises);
             const newImageUrls = uploadedImages.map(img => img.url);
-            
+
             console.log('Uploaded image URLs:', newImageUrls);
-            
+
             // If images already exist, append new ones; otherwise, set to new images
             if (finalSanitizedData.images && Array.isArray(finalSanitizedData.images)) {
                 // Filter out any non-string items (like file objects) and append new URLs
@@ -743,7 +743,7 @@ export const updateProduct = async (req, res, next) => {
             console.log('No files received in req.files');
             // If no files but images array contains objects, clean them up
             if (finalSanitizedData.images && Array.isArray(finalSanitizedData.images)) {
-                finalSanitizedData.images = finalSanitizedData.images.filter(item => 
+                finalSanitizedData.images = finalSanitizedData.images.filter(item =>
                     typeof item === 'string' && item.trim() !== ''
                 );
                 console.log('Cleaned images array (no files):', finalSanitizedData.images);
@@ -763,10 +763,10 @@ export const updateProduct = async (req, res, next) => {
 export const deleteProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         const product = await Product.findByIdAndDelete(id);
         if (!product) return next(new ApiError(404, 'Product not found'));
-        
+
         res.status(200).json(new ApiResponse(200, null, 'Product deleted successfully'));
     } catch (error) {
         next(error);
@@ -776,24 +776,24 @@ export const deleteProduct = async (req, res, next) => {
 export const getProductStats = async (req, res, next) => {
     try {
         const totalProducts = await Product.countDocuments();
-        
+
         const productsByCategory = await Product.aggregate([
             { $group: { _id: '$category', count: { $sum: 1 } } },
             { $sort: { count: -1 } }
         ]);
-        
+
         const productsByType = await Product.aggregate([
             { $unwind: '$type' },
             { $group: { _id: '$type', count: { $sum: 1 } } },
             { $sort: { count: -1 } }
         ]);
-        
+
         const avgPrice = await Product.aggregate([
             { $group: { _id: null, avgPrice: { $avg: '$price' } } }
         ]);
-        
+
         const lowStockProducts = await Product.find({ stock: { $lt: 10 } }).limit(10);
-        
+
         res.status(200).json(new ApiResponse(200, {
             totalProducts,
             productsByCategory,
@@ -812,35 +812,35 @@ export const getAdminLogs = async (req, res, next) => {
         const queryObj = { ...req.query };
         const excludedFields = ['page', 'sort', 'limit', 'fields'];
         excludedFields.forEach(field => delete queryObj[field]);
-        
+
         let queryStr = JSON.stringify(queryObj);
         queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, match => `${match}`);
-        
+
         let query = AdminLog.find(JSON.parse(queryStr));
         query = query.populate('admin_id', 'name email');
-        
+
         if (req.query.sort) {
             const sortBy = req.query.sort.split(',').join(' ');
             query = query.sort(sortBy);
         } else {
             query = query.sort('-timestamp');
         }
-        
+
         if (req.query.fields) {
             const fields = req.query.fields.split(',').join(' ');
             query = query.select(fields);
         } else {
             query = query.select('-__v');
         }
-        
+
         const page = parseInt(req.query.page, 10) || 1;
         const limit = parseInt(req.query.limit, 10) || 20;
         const skip = (page - 1) * limit;
-        
+
         query = query.skip(skip).limit(limit);
         const logs = await query;
         const total = await AdminLog.countDocuments(JSON.parse(queryStr));
-        
+
         res.status(200).json(new ApiResponse(200, {
             logs,
             pagination: {
@@ -860,17 +860,17 @@ export const updateUserRole = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { role } = req.body;
-        
+
         const validRoles = ['user', 'admin'];
         if (!validRoles.includes(role)) {
             return next(new ApiError(400, 'Invalid role'));
         }
-        
+
         const user = await User.findByIdAndUpdate(id, { role }, { new: true })
             .select('-password -refresh_token');
-        
+
         if (!user) return next(new ApiError(404, 'User not found'));
-        
+
         res.status(200).json(new ApiResponse(200, user, 'User role updated successfully'));
     } catch (error) {
         next(error);
@@ -880,14 +880,14 @@ export const updateUserRole = async (req, res, next) => {
 export const deleteUser = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         if (id === req.user.id) {
             return next(new ApiError(400, 'You cannot delete your own account'));
         }
-        
+
         const user = await User.findByIdAndDelete(id);
         if (!user) return next(new ApiError(404, 'User not found'));
-        
+
         res.status(200).json(new ApiResponse(200, null, 'User deleted successfully'));
     } catch (error) {
         next(error);
@@ -899,31 +899,31 @@ export const getAnalytics = async (req, res, next) => {
     try {
         const { period = '30' } = req.query;
         const days = parseInt(period);
-        
+
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
-        
+
         // User analytics
         const newUsers = await User.countDocuments({ created_at: { $gte: startDate } });
         const totalUsers = await User.countDocuments();
-        
+
         // Order analytics
         const newOrders = await Order.countDocuments({ created_at: { $gte: startDate } });
         const totalOrders = await Order.countDocuments();
-        
+
         // Revenue analytics
         const revenueResult = await Order.aggregate([
             { $match: { isPaid: true, paidAt: { $gte: startDate } } },
             { $group: { _id: null, revenue: { $sum: '$totalPrice' } } }
         ]);
         const periodRevenue = revenueResult.length > 0 ? revenueResult[0].revenue : 0;
-        
+
         const totalRevenueResult = await Order.aggregate([
             { $match: { isPaid: true } },
             { $group: { _id: null, revenue: { $sum: '$totalPrice' } } }
         ]);
         const totalRevenue = totalRevenueResult.length > 0 ? totalRevenueResult[0].revenue : 0;
-        
+
         // Daily stats for the period
         const dailyStats = await Order.aggregate([
             { $match: { created_at: { $gte: startDate } } },
@@ -940,7 +940,7 @@ export const getAnalytics = async (req, res, next) => {
             },
             { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
         ]);
-        
+
         res.status(200).json(new ApiResponse(200, {
             period: `${days} days`,
             users: { new: newUsers, total: totalUsers },
@@ -958,7 +958,7 @@ export const getSystemHealth = async (req, res, next) => {
     try {
         // Database connection status
         const dbStatus = 'connected'; // You can add actual DB health check
-        
+
         // Get system stats
         const stats = {
             uptime: process.uptime(),
@@ -966,7 +966,7 @@ export const getSystemHealth = async (req, res, next) => {
             nodeVersion: process.version,
             platform: process.platform
         };
-        
+
         res.status(200).json(new ApiResponse(200, {
             status: 'healthy',
             database: dbStatus,
@@ -981,6 +981,25 @@ export const clearCache = async (req, res, next) => {
     try {
         // Add cache clearing logic here if you have any caching system
         res.status(200).json(new ApiResponse(200, null, 'Cache cleared successfully'));
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Get admin settings (chargeDelivery, chargeGST)
+ * @route   GET /api/v1/admin/settings
+ * @access  Admin
+ */
+export const getAdminSettings = async (req, res, next) => {
+    try {
+        // You can later fetch these from DB or env, for now hardcode
+        const settings = {
+            chargeDelivery: false,
+            chargeGST: true,
+            pickupPincode: '741165'
+        };
+        res.status(200).json(settings);
     } catch (error) {
         next(error);
     }

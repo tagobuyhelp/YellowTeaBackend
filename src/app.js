@@ -9,6 +9,8 @@ import xss from 'xss-clean';
 import hpp from 'hpp';
 import compression from 'compression';
 import connectDB from './config/database.js';
+import cron from 'node-cron';
+import { updateShiprocketOrderStatuses } from './utils/shiprocket.js';
 
 // Load environment variables
 dotenv.config();
@@ -201,6 +203,12 @@ process.on('SIGTERM', () => {
     server.close(() => {
         console.log('Process terminated');
     });
+});
+
+// Schedule Shiprocket tracking updates every 30 minutes
+cron.schedule('*/30 * * * *', async () => {
+    console.log('Running Shiprocket tracking update cron job...');
+    await updateShiprocketOrderStatuses();
 });
 
 export default app;

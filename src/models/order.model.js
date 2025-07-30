@@ -36,6 +36,7 @@ const orderSchema = new mongoose.Schema({
         address: { type: String, required: true },
         city: { type: String, required: true },
         postalCode: { type: String, required: true },
+        state: { type: String, required: true },
         country: { type: String, required: true },
         phone: { type: String, required: true }
     },
@@ -97,6 +98,15 @@ const orderSchema = new mongoose.Schema({
         required: true,
         enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
         default: 'pending'
+    },
+    // Shiprocket integration fields
+    shiprocketOrderId: {
+        type: String,
+        default: null
+    },
+    shiprocketShipmentId: {
+        type: String,
+        default: null
     },
     trackingNumber: {
         type: String

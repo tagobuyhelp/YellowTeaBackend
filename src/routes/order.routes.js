@@ -11,7 +11,8 @@ import {
     updateShippingDetails,
     getOrderCountByStatus,
     markCodOrderAsPaid,
-    getAllOrders
+    getAllOrders,
+    shiprocketServiceability
 } from '../controllers/order.controller.js';
 import { isAuthenticated, protect, restrictTo } from '../middlewares/auth.middleware.js';
 
@@ -58,5 +59,8 @@ router.put('/:id/cod-paid', protect, restrictTo('admin'), markCodOrderAsPaid);
 
 // Admin: Get all orders
 router.get('/admin/all', isAuthenticated, restrictTo('admin'), getAllOrders);
+
+// Shiprocket serviceability check
+router.post('/shiprocket-serviceability', shiprocketServiceability);
 
 export default router;

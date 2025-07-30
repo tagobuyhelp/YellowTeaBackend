@@ -35,7 +35,8 @@ import {
     
     // System Operations
     getSystemHealth,
-    clearCache
+    clearCache,
+    getAdminSettings
 } from '../controllers/admin.controller.js';
 import { isAuthenticated } from '../middlewares/auth.middleware.js';
 import { restrictTo } from '../middlewares/role.middleware.js';
@@ -96,6 +97,9 @@ router.route('/users/:id')
 
 // ==================== ANALYTICS ====================
 router.get('/analytics', getAnalytics);
+
+// ==================== SETTINGS ====================
+router.get('/settings', getAdminSettings);
 
 // ==================== SYSTEM OPERATIONS ====================
 router.get('/system/health', getSystemHealth);
